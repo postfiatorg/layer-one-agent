@@ -64,6 +64,7 @@ Generate a minimal, safe fix for the described problem. Guidelines:
 - Do not introduce new dependencies.
 - Do not change unrelated code.
 - The fix must compile and not break existing behavior.
+- Do NOT attempt to compile, build, or run any code. Only generate source file changes.
 - Provide clear explanations of what changed and why.
 
 Branch naming: agent-{{environment}}/{{cluster_slug}}

@@ -59,6 +59,62 @@ class GitHubOps:
         )
         return output.strip() not in ("", "[]")
 
+    def check_pr_build_status(self) -> list[str]:
+        """Close agent PRs where the CI build has failed. Returns failed branch names."""
+        output = _run(
+            [
+                "gh", "pr", "list",
+                "--repo", self._config.target_repo,
+                "--author", "@me",
+                "--state", "open",
+                "--json", "number,headRefName",
+            ],
+            cwd=self._repo_path,
+            check=False,
+        )
+        if not output or output.strip() in ("", "[]"):
+            return []
+
+        import json
+        prs = json.loads(output)
+        failed_branches: list[str] = []
+        for pr in prs:
+            pr_number = pr["number"]
+            branch = pr["headRefName"]
+            checks_output = _run(
+                [
+                    "gh", "pr", "checks", str(pr_number),
+                    "--repo", self._config.target_repo,
+                    "--json", "name,state",
+                ],
+                cwd=self._repo_path,
+                check=False,
+            )
+            if not checks_output or checks_output.strip() in ("", "[]"):
+                continue
+
+            checks = json.loads(checks_output)
+            build_check = next(
+                (c for c in checks if c["name"] == "PR Build Check"), None
+            )
+            if build_check and build_check["state"] == "FAILURE":
+                logger.info("Build failed for PR #%d (%s), closing", pr_number, branch)
+                _run(
+                    [
+                        "gh", "pr", "close", str(pr_number),
+                        "--repo", self._config.target_repo,
+                        "--comment", "Closing: PR Build Check failed. The generated fix does not compile.",
+                    ],
+                    cwd=self._repo_path,
+                )
+                _run(
+                    ["git", "push", "origin", "--delete", branch],
+                    cwd=self._repo_path,
+                    check=False,
+                )
+                failed_branches.append(branch)
+        return failed_branches
+
     def create_branch_and_commit(
         self,
         branch: str,

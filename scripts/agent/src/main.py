@@ -56,6 +56,14 @@ def run() -> None:
 
         github.pull_latest()
 
+        # Close any agent PRs where the CI build ("PR Build Check") failed
+        try:
+            failed_branches = github.check_pr_build_status()
+            for branch in failed_branches:
+                state.mark_pattern_failed(branch)
+        except Exception:
+            logger.error("Failed to check PR build statuses", exc_info=True)
+
         entries = loki.query_errors()
         if not entries:
             logger.info("No warning/error/fatal entries found, exiting")

@@ -126,5 +126,13 @@ class StateManager:
         )
         self._conn.commit()
 
+    def mark_pattern_failed(self, branch: str) -> None:
+        self._conn.execute(
+            "UPDATE processed_patterns SET status = 'build_failed', updated_at = ? "
+            "WHERE branch = ? AND status = 'open'",
+            (time.time(), branch),
+        )
+        self._conn.commit()
+
     def close(self) -> None:
         self._conn.close()

@@ -9,6 +9,10 @@ on:
       - 'scripts/**'
   workflow_dispatch:
 
+concurrency:
+  group: deploy-${{ github.ref_name }}
+  cancel-in-progress: true
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
