@@ -1,0 +1,9 @@
+.env
+*.db
+__pycache__/
+/data/
+.claude/
+CLAUDE.md
+*.pyc
+.mypy_cache/
+.pytest_cache/

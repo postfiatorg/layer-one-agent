@@ -1,0 +1,1 @@
+*/30 * * * * . /etc/environment && cd /app && /usr/local/bin/python -m src.main >> /data/agent.log 2>&1

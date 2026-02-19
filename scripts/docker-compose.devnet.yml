@@ -1,0 +1,17 @@
+services:
+  agent:
+    build:
+      context: ./agent
+    container_name: layer-one-agent
+    env_file:
+      - .env
+    environment:
+      - ENVIRONMENT=devnet
+      - LOKI_URL=http://infra-monitoring.devnet.postfiat.org:3100
+      - GH_TOKEN=${GITHUB_TOKEN}
+    volumes:
+      - agent_data:/data
+    restart: unless-stopped
+
+volumes:
+  agent_data:

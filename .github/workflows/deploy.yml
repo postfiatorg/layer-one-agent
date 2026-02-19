@@ -1,0 +1,71 @@
+name: Deploy Agent
+
+on:
+  push:
+    branches:
+      - devnet
+      - testnet
+    paths:
+      - 'scripts/**'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set environment variables
+        run: |
+          BRANCH_NAME="${GITHUB_REF#refs/heads/}"
+          echo "ENVIRONMENT=${BRANCH_NAME}" >> $GITHUB_ENV
+          echo "COMPOSE_FILE=docker-compose.${BRANCH_NAME}.yml" >> $GITHUB_ENV
+
+      - name: Upload scripts to server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ env.ENVIRONMENT == 'devnet' && secrets.DEVNET_HOST || secrets.TESTNET_HOST }}
+          username: root
+          key: ${{ env.ENVIRONMENT == 'devnet' && secrets.DEVNET_SSH_KEY || secrets.TESTNET_SSH_KEY }}
+          source: "scripts/*"
+          target: "/tmp/layer-one-agent/"
+          strip_components: 0
+
+      - name: Deploy to agent server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ env.ENVIRONMENT == 'devnet' && secrets.DEVNET_HOST || secrets.TESTNET_HOST }}
+          username: root
+          key: ${{ env.ENVIRONMENT == 'devnet' && secrets.DEVNET_SSH_KEY || secrets.TESTNET_SSH_KEY }}
+          envs: COMPOSE_FILE
+          script: |
+            # Sync scripts directory
+            rsync -av --delete /tmp/layer-one-agent/scripts/ /opt/agent/
+
+            cd /opt/agent
+
+            # Build and restart
+            docker compose -f $COMPOSE_FILE build
+            docker compose -f $COMPOSE_FILE up -d --force-recreate
+
+            # Verify container is running
+            echo "Waiting for container to start..."
+            for i in {1..10}; do
+              if docker ps --filter "name=layer-one-agent" --filter "status=running" | grep -q layer-one-agent; then
+                echo "Agent container is running!"
+                break
+              fi
+              if [ $i -eq 10 ]; then
+                echo "Container failed to start"
+                docker logs layer-one-agent --tail 50
+                exit 1
+              fi
+              echo "Attempt $i/10 — waiting 5s..."
+              sleep 5
+            done
+
+            # Cleanup
+            rm -rf /tmp/layer-one-agent
+
+            echo "Deployment to ${COMPOSE_FILE} successful"

@@ -1,0 +1,4 @@
+httpx==0.28.*
+openai==1.82.*
+pydantic==2.11.*
+sendgrid==6.11.*
