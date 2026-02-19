@@ -2,6 +2,7 @@ services:
   agent:
     build:
       context: ./agent
+    image: layer-one-agent:testnet
     container_name: layer-one-agent
     env_file:
       - .env

@@ -25,13 +25,31 @@ jobs:
           BRANCH_NAME="${GITHUB_REF#refs/heads/}"
           echo "ENVIRONMENT=${BRANCH_NAME}" >> $GITHUB_ENV
           echo "COMPOSE_FILE=docker-compose.${BRANCH_NAME}.yml" >> $GITHUB_ENV
+          if [ "$BRANCH_NAME" = "devnet" ]; then
+            echo "DEPLOY_HOST=${{ secrets.DEVNET_HOST }}" >> $GITHUB_ENV
+            echo "DEPLOY_KEY<<EOFKEY" >> $GITHUB_ENV
+            echo "${{ secrets.DEVNET_SSH_KEY }}" >> $GITHUB_ENV
+            echo "EOFKEY" >> $GITHUB_ENV
+          else
+            echo "DEPLOY_HOST=${{ secrets.TESTNET_HOST }}" >> $GITHUB_ENV
+            echo "DEPLOY_KEY<<EOFKEY" >> $GITHUB_ENV
+            echo "${{ secrets.TESTNET_SSH_KEY }}" >> $GITHUB_ENV
+            echo "EOFKEY" >> $GITHUB_ENV
+          fi
+
+      - name: Verify deployment target is configured
+        run: |
+          if [ -z "${{ env.DEPLOY_HOST }}" ]; then
+            echo "::error::No host configured for ${{ env.ENVIRONMENT }}. Set ${{ env.ENVIRONMENT == 'devnet' && 'DEVNET_HOST' || 'TESTNET_HOST' }} in GitHub secrets."
+            exit 1
+          fi
 
       - name: Upload scripts to server
         uses: appleboy/scp-action@v0.1.7
         with:
-          host: ${{ env.ENVIRONMENT == 'devnet' && secrets.DEVNET_HOST || secrets.TESTNET_HOST }}
+          host: ${{ env.DEPLOY_HOST }}
           username: root
-          key: ${{ env.ENVIRONMENT == 'devnet' && secrets.DEVNET_SSH_KEY || secrets.TESTNET_SSH_KEY }}
+          key: ${{ env.DEPLOY_KEY }}
           source: "scripts/*"
           target: "/tmp/layer-one-agent/"
           strip_components: 0
@@ -39,9 +57,9 @@ jobs:
       - name: Deploy to agent server
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ env.ENVIRONMENT == 'devnet' && secrets.DEVNET_HOST || secrets.TESTNET_HOST }}
+          host: ${{ env.DEPLOY_HOST }}
           username: root
-          key: ${{ env.ENVIRONMENT == 'devnet' && secrets.DEVNET_SSH_KEY || secrets.TESTNET_SSH_KEY }}
+          key: ${{ env.DEPLOY_KEY }}
           envs: COMPOSE_FILE
           script: |
             # Sync scripts directory

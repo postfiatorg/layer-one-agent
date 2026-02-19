@@ -56,13 +56,29 @@ def run() -> None:
 
         github.pull_latest()
 
-        # Close any agent PRs where the CI build ("PR Build Check") failed
+        # Fix agent PRs where the CI build ("PR Build Check") failed
         try:
-            failed_branches = github.check_pr_build_status()
-            for branch in failed_branches:
-                state.mark_pattern_failed(branch)
+            failed_prs = github.get_failed_build_prs()
+            for pr_info in failed_prs:
+                pr_number = pr_info["number"]
+                branch = pr_info["branch"]
+                logger.info("Fixing failed build for PR #%d (%s)", pr_number, branch)
+
+                build_logs = github.get_build_error_logs(pr_number)
+                changed_files = github.get_pr_changed_files(pr_number)
+
+                if not build_logs or not changed_files:
+                    logger.warning("Could not retrieve build logs or changed files for PR #%d", pr_number)
+                    continue
+
+                build_fix = code_analyzer.fix_build_errors(build_logs, changed_files)
+                github.push_fix_commit(
+                    branch=branch,
+                    fixes=build_fix.fixes,
+                    message=build_fix.commit_message,
+                )
         except Exception:
-            logger.error("Failed to check PR build statuses", exc_info=True)
+            logger.error("Failed to process build fixes", exc_info=True)
 
         entries = loki.query_errors()
         if not entries:

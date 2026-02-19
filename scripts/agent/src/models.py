@@ -51,3 +51,9 @@ class FixProposal(BaseModel):
     pr_body: str
     fixes: list[CodeFix]
     relevant_files: list[FileRelevance]
+
+
+class BuildFixResult(BaseModel):
+    fixes: list[CodeFix]
+    commit_message: str
+    explanation: str

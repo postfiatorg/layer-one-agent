@@ -5,7 +5,7 @@ import subprocess
 from pathlib import Path
 
 from .config import REPO_CLONE_PATH, Config
-from .models import FileRelevance, FileSelection, FixProposal, LogCluster
+from .models import BuildFixResult, FileRelevance, FileSelection, FixProposal, LogCluster
 from .openai_client import OpenAIClient
 
 logger = logging.getLogger(__name__)
@@ -70,12 +70,43 @@ Generate a minimal, safe fix for the described problem. Guidelines:
 Branch naming: agent-{{environment}}/{{cluster_slug}}
 PR title: concise, imperative sentence describing the fix."""
 
+FIX_BUILD_ERRORS_DEVELOPER_MSG = """\
+You are an expert C++20 developer working on postfiatd (an XRPL fork).
+
+A previous code change failed to compile. You are given:
+- The build error logs from CI
+- The current content of the files that were changed
+
+Fix the compilation errors. Guidelines:
+- Only modify files that have build errors.
+- Make the minimal changes needed to fix the compilation.
+- Do NOT attempt to compile, build, or run any code. Only generate source file changes.
+- Preserve existing code style.
+- The commit message should describe what build errors were fixed."""
+
 
 class CodeAnalyzer:
     def __init__(self, config: Config, openai: OpenAIClient) -> None:
         self._config = config
         self._openai = openai
         self._repo_path = REPO_CLONE_PATH
+
+    def fix_build_errors(
+        self, build_logs: str, changed_files: list[str]
+    ) -> BuildFixResult:
+        file_contents = self._read_files_by_path(changed_files)
+
+        prompt = (
+            f"Build error logs:\n{build_logs}\n\n"
+            f"Current file contents:\n{file_contents}"
+        )
+
+        return self._openai.create(
+            prompt=prompt,
+            developer_message=FIX_BUILD_ERRORS_DEVELOPER_MSG,
+            schema=BuildFixResult,
+            reasoning_effort="xhigh",
+        )
 
     def generate_fix(self, cluster: LogCluster) -> FixProposal:
         relevant_files = self._identify_relevant_files(cluster)
@@ -183,6 +214,20 @@ class CodeAnalyzer:
         if len(content) > ARCHITECTURE_DOC_MAX_CHARS:
             return content[:ARCHITECTURE_DOC_MAX_CHARS] + "\n... (truncated)"
         return content
+
+    def _read_files_by_path(self, paths: list[str]) -> str:
+        sections = []
+        for path in paths:
+            file_path = self._repo_path / path
+            if not file_path.exists():
+                sections.append(f"--- {path} ---\n(file not found)\n")
+                continue
+            try:
+                content = file_path.read_text()
+                sections.append(f"--- {path} ---\n{content}\n")
+            except Exception:
+                sections.append(f"--- {path} ---\n(read error)\n")
+        return "\n".join(sections)
 
     def _read_source_files(self, files: list[FileRelevance]) -> str:
         sections = []

@@ -53,6 +53,7 @@ class StateManager:
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.row_factory = sqlite3.Row
         self._conn.executescript(SCHEMA)
+        self._migrate()
 
     def get_open_patterns(self) -> list[dict]:
         rows = self._conn.execute(
@@ -126,13 +127,6 @@ class StateManager:
         )
         self._conn.commit()
 
-    def mark_pattern_failed(self, branch: str) -> None:
-        self._conn.execute(
-            "UPDATE processed_patterns SET status = 'build_failed', updated_at = ? "
-            "WHERE branch = ? AND status = 'open'",
-            (time.time(), branch),
-        )
-        self._conn.commit()
 
     def close(self) -> None:
         self._conn.close()
