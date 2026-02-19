@@ -41,7 +41,7 @@ jobs:
           envs: COMPOSE_FILE
           script: |
             # Sync scripts directory
-            rsync -av --delete /tmp/layer-one-agent/scripts/ /opt/agent/
+            rsync -av --delete --exclude='.env' /tmp/layer-one-agent/scripts/ /opt/agent/
 
             cd /opt/agent
 
