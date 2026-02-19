@@ -11,9 +11,6 @@ printenv | grep -E '^(LOKI_URL|OPENAI_API_KEY|GITHUB_TOKEN|ENVIRONMENT|TARGET_RE
 git config --global user.name "postfiat-agent-${ENVIRONMENT}"
 git config --global user.email "layer-one-agent@deltahash.net"
 
-# Authenticate gh CLI
-echo "${GITHUB_TOKEN}" | gh auth login --with-token
-
 # Clone postfiatd if not present
 if [ ! -d "/data/postfiatd/.git" ]; then
     echo "Cloning postfiatd..."
