@@ -191,19 +191,63 @@ docker exec layer-one-agent python -m src.main
 
 ## 13. Monitoring
 
+### Container status
+
+```bash
+# Is the agent running?
+docker ps --filter "name=layer-one-agent" --format "table {{.Status}}\t{{.Image}}\t{{.CreatedAt}}"
+
+# Container resource usage
+docker stats layer-one-agent --no-stream
+```
+
 ### Agent logs
 
 ```bash
-docker logs layer-one-agent --follow
-# or
-docker exec layer-one-agent cat /data/agent.log
+# Live logs (entrypoint + cron output)
+docker logs layer-one-agent --follow --tail 100
+
+# Last run output only
+docker exec layer-one-agent tail -200 /data/agent.log
+
+# Search for errors in logs
+docker exec layer-one-agent grep -i "error\|fatal\|traceback" /data/agent.log | tail -30
+```
+
+### Cron schedule
+
+```bash
+# Verify cron is registered
+docker exec layer-one-agent crontab -l
+
+# Check when cron last ran
+docker exec layer-one-agent ls -la /data/agent.log
 ```
 
 ### State database
 
 ```bash
-docker exec layer-one-agent sqlite3 /data/state.db "SELECT * FROM runs ORDER BY id DESC LIMIT 10;"
-docker exec layer-one-agent sqlite3 /data/state.db "SELECT slug, status, pr_url, created_at FROM processed_patterns;"
+# Recent runs (last 10)
+docker exec layer-one-agent sqlite3 -header -column /data/state.db \
+  "SELECT id, datetime(started_at, 'unixepoch') AS started, clusters_found, prs_created, errors, round(duration_seconds,1) AS duration_s FROM runs ORDER BY id DESC LIMIT 10;"
+
+# All processed patterns
+docker exec layer-one-agent sqlite3 -header -column /data/state.db \
+  "SELECT slug, status, pr_url, datetime(created_at, 'unixepoch') AS created FROM processed_patterns ORDER BY created_at DESC;"
+
+# Log snapshots from last run
+docker exec layer-one-agent sqlite3 -header -column /data/state.db \
+  "SELECT cluster_slug, module, severity, occurrence_count FROM log_snapshots WHERE run_id = (SELECT MAX(id) FROM runs);"
+```
+
+### Quick health check
+
+```bash
+# All-in-one: container status, last run, and recent errors
+docker ps --filter "name=layer-one-agent" --format "Container: {{.Status}}" && \
+docker exec layer-one-agent sqlite3 /data/state.db \
+  "SELECT 'Last run: ' || datetime(started_at, 'unixepoch') || ' | clusters=' || clusters_found || ' prs=' || prs_created || ' errors=' || errors FROM runs ORDER BY id DESC LIMIT 1;" && \
+docker exec layer-one-agent grep -c "ERROR\|CRITICAL" /data/agent.log 2>/dev/null | xargs -I{} echo "Error lines in log: {}"
 ```
 
 ## 14. Maintenance
