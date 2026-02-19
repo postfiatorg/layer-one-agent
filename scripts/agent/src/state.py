@@ -53,7 +53,6 @@ class StateManager:
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.row_factory = sqlite3.Row
         self._conn.executescript(SCHEMA)
-        self._migrate()
 
     def get_open_patterns(self) -> list[dict]:
         rows = self._conn.execute(
