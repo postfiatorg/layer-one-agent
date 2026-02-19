@@ -16,9 +16,11 @@ RETRY_DELAYS = (2, 5, 15)
 
 
 def _enforce_strict_schema(schema: dict) -> dict:
-    """Add additionalProperties: false to all object types for OpenAI strict mode."""
+    """Enforce OpenAI strict mode: additionalProperties false, all properties required."""
     if schema.get("type") == "object":
         schema["additionalProperties"] = False
+        if "properties" in schema:
+            schema["required"] = list(schema["properties"].keys())
     for key in ("properties", "$defs"):
         if key in schema:
             for value in schema[key].values():
