@@ -15,6 +15,20 @@ MODEL = "gpt-5.2-codex"
 RETRY_DELAYS = (2, 5, 15)
 
 
+def _enforce_strict_schema(schema: dict) -> dict:
+    """Add additionalProperties: false to all object types for OpenAI strict mode."""
+    if schema.get("type") == "object":
+        schema["additionalProperties"] = False
+    for key in ("properties", "$defs"):
+        if key in schema:
+            for value in schema[key].values():
+                if isinstance(value, dict):
+                    _enforce_strict_schema(value)
+    if "items" in schema and isinstance(schema["items"], dict):
+        _enforce_strict_schema(schema["items"])
+    return schema
+
+
 class OpenAIClient:
     def __init__(self, config: Config) -> None:
         self._client = OpenAI(api_key=config.openai_api_key)
@@ -26,7 +40,7 @@ class OpenAIClient:
         schema: type[BaseModel],
         reasoning_effort: str = "medium",
     ) -> Any:
-        json_schema = schema.model_json_schema()
+        json_schema = _enforce_strict_schema(schema.model_json_schema())
 
         for attempt, delay in enumerate(RETRY_DELAYS, start=1):
             try:
