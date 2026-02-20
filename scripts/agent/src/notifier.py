@@ -1,14 +1,16 @@
 from __future__ import annotations
 
+import json
 import logging
 
-from sendgrid import SendGridAPIClient
-from sendgrid.helpers.mail import Content, Email, Mail, To
+import httpx
 
 from .config import Config
 from .models import LogCluster
 
 logger = logging.getLogger(__name__)
+
+RESEND_API_URL = "https://api.resend.com/emails"
 
 
 def _build_html_body(clusters: list[LogCluster], environment: str) -> str:
@@ -48,7 +50,7 @@ def _build_html_body(clusters: list[LogCluster], environment: str) -> str:
 
 class Notifier:
     def __init__(self, config: Config) -> None:
-        self._client = SendGridAPIClient(api_key=config.sendgrid_api_key)
+        self._api_key = config.resend_api_key
         self._from_email = config.from_email
         self._to_email = config.notification_email
         self._environment = config.environment
@@ -64,19 +66,29 @@ class Notifier:
 
         html_body = _build_html_body(skipped_clusters, self._environment)
 
-        message = Mail(
-            from_email=Email(self._from_email),
-            to_emails=To(self._to_email),
-            subject=subject,
-            html_content=Content("text/html", html_body),
-        )
-
         try:
-            response = self._client.send(message)
-            logger.info(
-                "Skip notification sent (status=%d, clusters=%d)",
-                response.status_code,
-                len(skipped_clusters),
+            response = httpx.post(
+                RESEND_API_URL,
+                headers={
+                    "Authorization": f"Bearer {self._api_key}",
+                    "Content-Type": "application/json",
+                },
+                content=json.dumps({
+                    "from": self._from_email,
+                    "to": [self._to_email],
+                    "subject": subject,
+                    "html": html_body,
+                }),
+                timeout=15,
             )
+            if response.status_code == 200:
+                logger.info(
+                    "Skip notification sent (clusters=%d)",
+                    len(skipped_clusters),
+                )
+            else:
+                logger.error(
+                    "Resend API error: %d %s", response.status_code, response.text[:500]
+                )
         except Exception:
             logger.error("Failed to send skip notification", exc_info=True)
