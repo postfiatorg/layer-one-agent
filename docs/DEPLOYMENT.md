@@ -72,14 +72,12 @@ The agent pushes only to `agent-testnet/*` and `agent-devnet/*` branches (which 
 3. Verify access to `gpt-5.2-codex`
 4. Set a monthly spend limit (recommended: $50–100/month to start)
 
-## 6. SendGrid Setup
+## 6. Resend Setup
 
-1. Create a SendGrid account at https://sendgrid.com
-2. Go to **Settings → API Keys → Create API Key**
-3. Grant **Mail Send** permission only
-4. Verify sender addresses:
-   - **Preferred**: Domain authentication for `postfiat.org`
-   - **Alternative**: Single sender verification for `agent-testnet@postfiat.org` and `agent-devnet@postfiat.org`
+1. Create a Resend account at https://resend.com
+2. Go to **API Keys → Create API Key**
+3. Add and verify your sending domain (`postfiat.org`)
+4. The agent sends from `agent-{environment}@postfiat.org`
 
 ## 7. Server Setup
 
@@ -116,7 +114,7 @@ Create the `.env` file on the server:
 cat > /opt/agent/.env << 'EOF'
 OPENAI_API_KEY=sk-...
 GITHUB_TOKEN=github_pat_...
-SENDGRID_API_KEY=SG...
+RESEND_API_KEY=re_...
 NOTIFICATION_EMAIL=domagoj@deltahash.net
 REVIEWER=DRavlic
 TARGET_REPO=postfiatorg/postfiatd
@@ -296,9 +294,9 @@ git push origin --delete agent-testnet/some-old-slug
 - Inspect state: `docker exec layer-one-agent sqlite3 /data/state.db "SELECT slug, pr_url FROM processed_patterns;"`
 - The agent also checks for existing branches/PRs as a safety net
 
-**SendGrid not sending**
-- Verify sender: check domain or single sender verification in SendGrid dashboard
-- Check API key permissions: must have Mail Send scope
+**Resend not sending**
+- Verify domain is configured in Resend dashboard
+- Check API key is valid: `curl -s -H "Authorization: Bearer $RESEND_API_KEY" https://api.resend.com/domains`
 
 **Container not starting**
 - Check env vars: `docker compose config`

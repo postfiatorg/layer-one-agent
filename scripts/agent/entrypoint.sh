@@ -5,7 +5,7 @@ echo "=== PostFiat Layer-One Agent ==="
 echo "Environment: ${ENVIRONMENT}"
 
 # Export env vars for cron (cron does not inherit Docker env)
-printenv | grep -E '^(LOKI_URL|OPENAI_API_KEY|GITHUB_TOKEN|ENVIRONMENT|TARGET_REPO|REVIEWER|MAX_PRS_PER_RUN|QUERY_WINDOW_MINUTES|SENDGRID_API_KEY|NOTIFICATION_EMAIL|GH_TOKEN|PATH)=' > /etc/environment
+printenv | grep -E '^(LOKI_URL|OPENAI_API_KEY|GITHUB_TOKEN|ENVIRONMENT|TARGET_REPO|REVIEWER|MAX_PRS_PER_RUN|QUERY_WINDOW_MINUTES|RESEND_API_KEY|NOTIFICATION_EMAIL|GH_TOKEN|PATH)=' > /etc/environment
 
 # Configure git identity
 git config --global user.name "postfiat-agent-${ENVIRONMENT}"

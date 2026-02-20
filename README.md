@@ -40,7 +40,7 @@ scripts/
         ├── code_analyzer.py     # Source file identification + fix generation
         ├── state.py             # SQLite state tracking
         ├── github_ops.py        # Git branching, commits, PR creation
-        └── notifier.py          # SendGrid email notifications
+        └── notifier.py          # Resend email notifications
 ```
 
 ## Deployment
@@ -64,7 +64,7 @@ docker compose -f docker-compose.testnet.yml up -d
 |---|---|---|
 | `OPENAI_API_KEY` | Yes | OpenAI API key with `gpt-5.2-codex` access |
 | `GITHUB_TOKEN` | Yes | Fine-grained PAT with Contents + PR write access on `postfiatd` |
-| `SENDGRID_API_KEY` | Yes | SendGrid API key for email notifications |
+| `RESEND_API_KEY` | Yes | Resend API key for email notifications |
 | `ENVIRONMENT` | Set by compose | `testnet` or `devnet` |
 | `LOKI_URL` | Set by compose | Loki instance URL |
 | `TARGET_REPO` | No | Default: `postfiatorg/postfiatd` |
