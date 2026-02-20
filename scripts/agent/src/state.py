@@ -59,14 +59,19 @@ class StateManager:
             "SELECT slug, summary, sample_messages FROM processed_patterns "
             "WHERE status != 'closed'"
         ).fetchall()
-        return [
-            {
+        patterns: list[dict] = []
+        for row in rows:
+            try:
+                messages = json.loads(row["sample_messages"])
+            except (json.JSONDecodeError, TypeError):
+                logger.warning("Skipping pattern with corrupted data: %s", row["slug"])
+                continue
+            patterns.append({
                 "slug": row["slug"],
                 "summary": row["summary"],
-                "sample_messages": json.loads(row["sample_messages"]),
-            }
-            for row in rows
-        ]
+                "sample_messages": messages,
+            })
+        return patterns
 
     def record_pattern(
         self,

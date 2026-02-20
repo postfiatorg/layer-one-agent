@@ -44,6 +44,7 @@ def run() -> None:
     errors = 0
     clusters_found = 0
 
+    state: StateManager | None = None
     try:
         config = Config.from_env()
         state = StateManager()
@@ -80,7 +81,12 @@ def run() -> None:
         except Exception:
             logger.error("Failed to process build fixes", exc_info=True)
 
-        entries = loki.query_errors()
+        try:
+            entries = loki.query_errors()
+        except Exception:
+            logger.error("Failed to query Loki, proceeding with no entries", exc_info=True)
+            entries = []
+
         if not entries:
             logger.info("No warning/error/fatal entries found, exiting")
             state.record_run(started_at, 0, 0, 0)
@@ -174,12 +180,15 @@ def run() -> None:
     except Exception:
         logger.critical("Fatal error in agent run", exc_info=True)
         try:
-            StateManager().record_run(started_at, clusters_found, prs_created, errors + 1)
+            s = state if state is not None else StateManager()
+            s.record_run(started_at, clusters_found, prs_created, errors + 1)
         except Exception:
             pass
         sys.exit(1)
 
     finally:
+        if state is not None:
+            state.close()
         try:
             fcntl.flock(lock, fcntl.LOCK_UN)
             lock.close()  # type: ignore[union-attr]

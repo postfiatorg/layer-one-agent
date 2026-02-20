@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import json
 import logging
 import subprocess
 from pathlib import Path
+from typing import Any
 
 from .config import REPO_CLONE_PATH, Config
 from .models import CodeFix
@@ -11,19 +13,34 @@ logger = logging.getLogger(__name__)
 
 
 def _run(args: list[str], cwd: Path | None = None, check: bool = True) -> str:
-    result = subprocess.run(
-        args,
-        cwd=cwd,
-        capture_output=True,
-        text=True,
-        timeout=120,
-    )
+    try:
+        result = subprocess.run(
+            args,
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+    except subprocess.TimeoutExpired:
+        logger.warning("Command timed out: %s", " ".join(args))
+        if check:
+            raise
+        return ""
     if check and result.returncode != 0:
         raise RuntimeError(
             f"Command failed: {' '.join(args)}\n"
             f"stderr: {result.stderr}\nstdout: {result.stdout}"
         )
     return result.stdout.strip()
+
+
+def _parse_json(text: str, fallback: Any = None) -> Any:
+    """Parse JSON from CLI output, returning fallback on failure."""
+    try:
+        return json.loads(text)
+    except (json.JSONDecodeError, TypeError):
+        logger.warning("Failed to parse JSON from CLI output: %.200s", text)
+        return fallback
 
 
 class GitHubOps:
@@ -75,8 +92,10 @@ class GitHubOps:
         if not output or output.strip() in ("", "[]"):
             return []
 
-        import json
-        prs = json.loads(output)
+        prs = _parse_json(output, [])
+        if not prs:
+            return []
+
         failed: list[dict] = []
         for pr in prs:
             pr_number = pr["number"]
@@ -93,7 +112,10 @@ class GitHubOps:
             if not checks_output or checks_output.strip() in ("", "[]"):
                 continue
 
-            checks = json.loads(checks_output)
+            checks = _parse_json(checks_output, [])
+            if not checks:
+                continue
+
             build_check = next(
                 (c for c in checks if c["name"] == "PR Build Check"), None
             )
@@ -104,7 +126,6 @@ class GitHubOps:
 
     def get_build_error_logs(self, pr_number: int) -> str:
         """Fetch the failed build check logs for a PR."""
-        import json
         output = _run(
             [
                 "gh", "pr", "checks", str(pr_number),
@@ -117,7 +138,10 @@ class GitHubOps:
         if not output or output.strip() in ("", "[]"):
             return ""
 
-        checks = json.loads(output)
+        checks = _parse_json(output, [])
+        if not checks:
+            return ""
+
         build_check = next(
             (c for c in checks if c["name"] == "PR Build Check"), None
         )
@@ -142,7 +166,6 @@ class GitHubOps:
 
     def get_pr_changed_files(self, pr_number: int) -> list[str]:
         """Return list of file paths changed in a PR."""
-        import json
         output = _run(
             [
                 "gh", "pr", "view", str(pr_number),
@@ -154,7 +177,9 @@ class GitHubOps:
         )
         if not output or output.strip() in ("", "[]"):
             return []
-        data = json.loads(output)
+        data = _parse_json(output, {})
+        if not data:
+            return []
         return [f["path"] for f in data.get("files", [])]
 
     def push_fix_commit(
@@ -164,23 +189,30 @@ class GitHubOps:
         message: str,
     ) -> None:
         """Push a fix commit to an existing branch."""
+        if not fixes:
+            logger.warning("No fixes to push for branch %s", branch)
+            return
+
         logger.info("Pushing build fix to %s with %d file changes", branch, len(fixes))
         _run(["git", "fetch", "origin", branch], cwd=self._repo_path)
         _run(["git", "checkout", branch], cwd=self._repo_path)
-        _run(["git", "reset", "--hard", f"origin/{branch}"], cwd=self._repo_path)
+        try:
+            _run(["git", "reset", "--hard", f"origin/{branch}"], cwd=self._repo_path)
 
-        for fix in fixes:
-            file_path = self._repo_path / fix.path
-            file_path.parent.mkdir(parents=True, exist_ok=True)
-            file_path.write_text(fix.modified_content)
+            for fix in fixes:
+                file_path = self._repo_path / fix.path
+                file_path.parent.mkdir(parents=True, exist_ok=True)
+                file_path.write_text(fix.modified_content)
 
-        _run(
-            ["git", "add"] + [fix.path for fix in fixes],
-            cwd=self._repo_path,
-        )
-        _run(["git", "commit", "-m", message], cwd=self._repo_path)
-        _run(["git", "push", "origin", branch], cwd=self._repo_path)
-        _run(["git", "checkout", "main"], cwd=self._repo_path)
+            _run(
+                ["git", "add"] + [fix.path for fix in fixes],
+                cwd=self._repo_path,
+            )
+            _run(["git", "commit", "-m", message], cwd=self._repo_path)
+            _run(["git", "push", "origin", branch], cwd=self._repo_path)
+        finally:
+            _run(["git", "checkout", "main"], cwd=self._repo_path, check=False)
+            _run(["git", "reset", "--hard", "origin/main"], cwd=self._repo_path, check=False)
 
     def create_branch_and_commit(
         self,
@@ -188,23 +220,28 @@ class GitHubOps:
         fixes: list[CodeFix],
         message: str,
     ) -> None:
+        if not fixes:
+            logger.warning("No fixes to commit for branch %s", branch)
+            return
+
         logger.info("Creating branch %s with %d file changes", branch, len(fixes))
 
         _run(["git", "checkout", "-b", branch], cwd=self._repo_path)
+        try:
+            for fix in fixes:
+                file_path = self._repo_path / fix.path
+                file_path.parent.mkdir(parents=True, exist_ok=True)
+                file_path.write_text(fix.modified_content)
 
-        for fix in fixes:
-            file_path = self._repo_path / fix.path
-            file_path.parent.mkdir(parents=True, exist_ok=True)
-            file_path.write_text(fix.modified_content)
-
-        _run(
-            ["git", "add"] + [fix.path for fix in fixes],
-            cwd=self._repo_path,
-        )
-        _run(["git", "commit", "-m", message], cwd=self._repo_path)
-        _run(["git", "push", "-u", "origin", branch], cwd=self._repo_path)
-
-        _run(["git", "checkout", "main"], cwd=self._repo_path)
+            _run(
+                ["git", "add"] + [fix.path for fix in fixes],
+                cwd=self._repo_path,
+            )
+            _run(["git", "commit", "-m", message], cwd=self._repo_path)
+            _run(["git", "push", "-u", "origin", branch], cwd=self._repo_path)
+        finally:
+            _run(["git", "checkout", "main"], cwd=self._repo_path, check=False)
+            _run(["git", "reset", "--hard", "origin/main"], cwd=self._repo_path, check=False)
 
     def create_pr(self, branch: str, title: str, body: str) -> str:
         logger.info("Creating PR: %s", title)
